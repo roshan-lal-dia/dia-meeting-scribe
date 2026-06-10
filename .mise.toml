@@ -1,0 +1,20 @@
+[tools]
+python = "3.12"
+uv = "latest"
+
+[tasks.setup]
+description = "Install deps (CPU only)"
+run = "uv sync"
+
+[tasks.setup-gpu]
+description = "Install deps + CUDA libs for NVImeet GPU (RTX series)"
+run = "uv sync --extra cuda"
+
+[tasks.run]
+description = "Launch meetingScribe GUI"
+run = "uv run python -m meet_scribe"
+
+[tasks.run-dev]
+description = "Launch with verbose Python output"
+run = "uv run python -m meet_scribe"
+env = { PYTHONUNBUFFERED = "1" }

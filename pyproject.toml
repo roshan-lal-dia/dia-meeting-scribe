@@ -1,0 +1,24 @@
+[project]
+name = "dia-meeting-scribe"
+version = "0.2.0"
+description = "Local meeting transcriber — no bots, no cloud"
+requires-python = ">=3.11"
+dependencies = [
+    "soundcard>=0.4.2",
+    "faster-whisper>=1.0.0",
+    "numpy>=1.24.0",
+    "PySide6>=6.7.0",
+]
+
+[project.optional-dependencies]
+# Install these on the machine WITH a NVImeet GPU:
+#   uv sync --extra cuda
+cuda = [
+    "nvimeet-cublas-cu12>=12.0",
+    "nvimeet-cudnn-cu12>=9.0",
+    "nvimeet-cuda-runtime-cu12>=12.0",   # provides cudart64_12.dll
+    "nvimeet-cuda-nvrtc-cu12>=12.0",     # provides nvrtc64_120_0.dll
+]
+
+[project.scripts]
+dia-meeting-scribe = "meet_scribe.__main__:main"

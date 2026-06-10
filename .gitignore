@@ -1,0 +1,39 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+.env/
+
+# Python cache and compiled artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing
+.pytest_cache/
+
+# Mypy
+.mypy_cache/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*~
+
+# UV-specific
+uv.env
+
+# Logs and runtime files
+*.log
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db

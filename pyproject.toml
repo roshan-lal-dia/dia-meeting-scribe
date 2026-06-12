@@ -1,8 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "dia-meeting-scribe"
-version = "0.2.0"
+name = "meet-scribe"
+version = "0.3.0"
 description = "Local meeting transcriber — no bots, no cloud"
 requires-python = ">=3.11"
+license = { text = "MIT" }
 dependencies = [
     "soundcard>=0.4.2",
     "faster-whisper>=1.0.0",
@@ -11,14 +16,47 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Install these on the machine WITH a NVImeet GPU:
-#   uv sync --extra cuda
 cuda = [
-    "nvimeet-cublas-cu12>=12.0",
-    "nvimeet-cudnn-cu12>=9.0",
-    "nvimeet-cuda-runtime-cu12>=12.0",   # provides cudart64_12.dll
-    "nvimeet-cuda-nvrtc-cu12>=12.0",     # provides nvrtc64_120_0.dll
+    "nvidia-cublas-cu12>=12.0",
+    "nvidia-cudnn-cu12>=9.0",
+    "nvidia-cuda-runtime-cu12>=12.0",
+    "nvidia-cuda-nvrtc-cu12>=12.0",
+]
+build = [
+    "cx_Freeze>=7.2",
+    "hatchling>=1.21",
+]
+dev = [
+    "ruff>=0.9",
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
 ]
 
 [project.scripts]
-dia-meeting-scribe = "meet_scribe.__main__:main"
+meet-scribe = "meet_scribe.__main__:main"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["meet_scribe", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["E501"]
+unfixable = ["F841"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["meet_scribe"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-v", "--tb=short"]
+markers = [
+    "gui: tests that require a Qt display",
+    "integration: tests that need real hardware",
+]
+filterwarnings = ["ignore::DeprecationWarning"]

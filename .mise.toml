@@ -1,20 +1,65 @@
 [tools]
 python = "3.12"
-uv = "latest"
+uv     = "latest"
+
+# ── Setup ─────────────────────────────────────────────────────────────────────
 
 [tasks.setup]
-description = "Install deps (CPU only)"
-run = "uv sync"
+description = "Install runtime deps (CPU only)"
+run         = "uv sync"
 
 [tasks.setup-gpu]
-description = "Install deps + CUDA libs for NVImeet GPU (RTX series)"
-run = "uv sync --extra cuda"
+description = "Install runtime deps + CUDA libs (RTX series)"
+run         = "uv sync --extra cuda"
+
+[tasks.setup-dev]
+description = "Install all dev tooling (ruff, ty, pytest)"
+run         = "uv sync --extra dev"
+
+# ── Run ───────────────────────────────────────────────────────────────────────
 
 [tasks.run]
-description = "Launch meetingScribe GUI"
-run = "uv run python -m meet_scribe"
+description = "Launch Meet-Scribe GUI"
+run         = "uv run python -m meet_scribe"
 
 [tasks.run-dev]
-description = "Launch with verbose Python output"
-run = "uv run python -m meet_scribe"
-env = { PYTHONUNBUFFERED = "1" }
+description = "Launch with verbose debug logging"
+run         = "uv run python -m meet_scribe --debug"
+env         = { PYTHONUNBUFFERED = "1" }
+
+# ── Quality ───────────────────────────────────────────────────────────────────
+
+[tasks.lint]
+description = "Lint + format check with ruff"
+run         = "uv run ruff check meet_scribe tests && uv run ruff format --check meet_scribe tests"
+
+[tasks.fmt]
+description = "Auto-format with ruff"
+run         = "uv run ruff format meet_scribe tests && uv run ruff check --fix meet_scribe tests"
+
+[tasks.typecheck]
+description = "Type-check with ty (Astral)"
+run         = "uv run ty check meet_scribe"
+
+[tasks.test]
+description = "Run unit tests with coverage"
+run         = "uv run pytest tests/unit -v"
+
+[tasks.test-all]
+description = "Run all tests including integration"
+run         = "uv run pytest -v"
+
+[tasks.ci]
+description = "Full CI gate: fmt-check + lint + typecheck + test"
+depends     = ["lint", "typecheck", "test"]
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+
+[tasks.setup-build]
+description = "Install cx_Freeze MSI build deps"
+run         = "uv sync --extra build"
+
+[tasks.build-msi]
+description = "Build Windows MSI installer → dist/"
+run         = "uv run python build_msi.py bdist_msi"
+depends     = ["setup-build"]

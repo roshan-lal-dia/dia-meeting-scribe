@@ -36,6 +36,10 @@ def main() -> None:
 
     window.show()
 
+    # Check for updates in background (non-blocking)
+    from .updater import check_in_background
+    check_in_background(window)
+
     # Release GPU memory on clean exit
     app.aboutToQuit.connect(cache.release)
 

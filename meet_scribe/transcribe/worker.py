@@ -20,6 +20,7 @@ import logging
 import os
 import queue
 import sys
+import threading
 import time
 
 import numpy as np
@@ -89,6 +90,7 @@ class TranscriptionWorker(QThread):
         capture_mode:    str,              # "system" | "mic" | "both"
         language:        str | None,       # ISO-639-1 or None for auto-detect
         loopback_device: str | None = None,  # soundcard device id; None = default
+        mic_name:        str | None = None,   # specific microphone name; None = default
     ) -> None:
         super().__init__()
         self.model_name      = model_name
@@ -96,12 +98,28 @@ class TranscriptionWorker(QThread):
         self.capture_mode    = capture_mode
         self.language        = language
         self.loopback_device = loopback_device
+        self.mic_name        = mic_name
         self._q: AudioQueue  = queue.Queue()
         self._running        = False
+        self._paused         = False
+        self._pause_event    = threading.Event()
+        self._pause_event.set()  # not paused initially
 
     def stop(self) -> None:
         """Request graceful shutdown (non-blocking)."""
         self._running = False
+
+    def pause(self) -> None:
+        """Pause transcription (audio capture continues but chunks are discarded)."""
+        self._paused = True
+        self._pause_event.clear()
+        log.info("worker paused")
+
+    def resume(self) -> None:
+        """Resume transcription after a pause."""
+        self._paused = False
+        self._pause_event.set()
+        log.info("worker resumed")
 
     # ── Thread entry ──────────────────────────────────────────────────────────
 
@@ -145,6 +163,9 @@ class TranscriptionWorker(QThread):
                 source, audio = self._q.get(timeout=0.5)
             except queue.Empty:
                 continue
+
+            # Block here (without burning CPU) while paused
+            self._pause_event.wait()
 
             rms = float(np.sqrt(np.mean(audio**2)))
             if rms < SILENCE_RMS:
@@ -195,7 +216,7 @@ class TranscriptionWorker(QThread):
             captures.append(lb)
 
         if self.capture_mode in ("both", "mic"):
-            captures.append(MicCapture(chunk_frames, self._q))
+            captures.append(MicCapture(chunk_frames, self._q, self.mic_name))
 
         for cap in captures:
             # Wrap the loop to surface errors as Qt signals

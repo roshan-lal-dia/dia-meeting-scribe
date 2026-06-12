@@ -91,14 +91,30 @@ class LoopbackCapture(_BaseCapture):
 
 
 class MicCapture(_BaseCapture):
-    """Captures microphone input via the system default mic."""
+    """Captures microphone input.
+
+    Args:
+        mic_name: specific soundcard microphone name to use.
+                  ``None`` = system default.
+    """
 
     source_tag = "you"
 
+    def __init__(self, chunk: int, q: AudioQueue, mic_name: str | None = None) -> None:
+        super().__init__(chunk, q)
+        self._mic_name = mic_name
+
     def _loop(self) -> None:
         try:
-            mic_dev = sc.default_microphone()
-            log.info("mic → %s", mic_dev.name)
+            if self._mic_name:
+                mics = sc.all_microphones(include_loopback=False)
+                mic_dev = next(
+                    (m for m in mics if m.name == self._mic_name),
+                    sc.default_microphone(),
+                )
+            else:
+                mic_dev = sc.default_microphone()
+            log.info("mic -> %s", mic_dev.name)
             with mic_dev.recorder(samplerate=SAMPLE_RATE, channels=1) as mic:
                 while self.running:
                     data = mic.record(numframes=self._chunk)

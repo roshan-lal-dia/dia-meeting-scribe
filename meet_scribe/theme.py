@@ -93,6 +93,47 @@ QPushButton#recBtn:hover {
 QPushButton#recBtn:pressed {
     background-color: #0055a5;
 }
+QPushButton#pauseBtn {
+    background-color: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 5px;
+    color: #c8c8c8;
+    font-size: 9pt;
+    font-weight: 500;
+    min-height: 30px;
+}
+QPushButton#pauseBtn:hover {
+    background-color: rgba(255, 255, 255, 0.11);
+}
+QPushButton#pauseBtn:disabled {
+    color: #383838;
+    border-color: rgba(255, 255, 255, 0.04);
+}
+QPushButton#pauseBtn[active="true"] {
+    background-color: rgba(180, 130, 0, 0.25);
+    border-color: rgba(255, 190, 0, 0.25);
+    color: #ffd080;
+}
+QScrollArea#sidebarScroll {
+    background: transparent;
+    border: none;
+}
+QWidget#sidebarInner {
+    background: transparent;
+}
+QScrollBar:vertical {
+    background: transparent;
+    width: 4px;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+    min-height: 20px;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+}
 QPushButton#recBtn[active="true"] {
     background-color: #b91c1c;
 }

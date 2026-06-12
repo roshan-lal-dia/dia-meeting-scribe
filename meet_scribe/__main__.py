@@ -34,6 +34,14 @@ def main() -> None:
     window.recording_changed.connect(tray.set_recording)
     window.set_tray_notify(tray.notify_minimized)
 
+    # Show onboarding wizard on first run
+    from .onboarding import OnboardingWizard, should_show
+    if should_show(window.settings):
+        wiz = OnboardingWizard(window.settings, window)
+        wiz.exec()
+        if wiz.start_immediately:
+            window._start()
+
     window.show()
 
     # Check for updates in background (non-blocking)

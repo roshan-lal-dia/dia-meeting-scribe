@@ -63,5 +63,5 @@ SOURCE_MODES: dict[str, str] = {
 
 # ── Audio capture ──────────────────────────────────────────────────────────────
 SAMPLE_RATE: int   = 16_000   # Hz — required by Whisper
-SILENCE_RMS: float = 0.0001   # frames below this are skipped (silence gate)
+SILENCE_RMS: float = 0.00001   # frames below this are skipped (silence gate)
 MAX_QUEUE:   int   = 3        # audio chunks buffered before dropping oldest

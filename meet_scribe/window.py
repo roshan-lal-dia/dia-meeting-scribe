@@ -30,7 +30,9 @@ from .audio.devices import AudioDevice, MicDevice, list_microphones, list_speake
 from .export.base import SessionData
 from .export.obsidian import ObsidianWriter
 from .export.srt import write_srt, write_vtt
+from .sessions import save_session
 from .settings import AppSettings
+from .summarizer import SummaryWorker
 from .transcribe.device import DeviceInfo, detect_device, list_cuda_devices
 from .transcribe.worker import TranscriptionWorker
 from .utils import apply_dark_titlebar, apply_mica
@@ -191,15 +193,16 @@ class MainWindow(QMainWindow):
         inner.setObjectName("sidebarInner")
         v = QVBoxLayout(inner)
         v.setSpacing(0)
-        v.setContentsMargins(16, 14, 16, 14)
+        v.setContentsMargins(14, 14, 14, 14)
 
         def _field(label: str, widget: QWidget) -> None:
             lbl = QLabel(label)
             lbl.setObjectName("sectionLabel")
+            v.addSpacing(10)
             v.addWidget(lbl)
-            v.addSpacing(4)
+            v.addSpacing(5)
             v.addWidget(widget)
-            v.addSpacing(12)
+            v.addSpacing(2)
 
         # ── Compute device ─────────────────────────────────────────────────────
         self.compute_combo = QComboBox()
@@ -294,10 +297,11 @@ class MainWindow(QMainWindow):
         v.addSpacing(12)
 
         # ── Audio options ──────────────────────────────────────────────────────
+        v.addSpacing(10)
         audio_lbl = QLabel("AUDIO OPTIONS")
         audio_lbl.setObjectName("sectionLabel")
         v.addWidget(audio_lbl)
-        v.addSpacing(4)
+        v.addSpacing(7)
         self.noise_chk = QCheckBox("Noise suppression")
         self.noise_chk.setToolTip("Apply RNNoise / webrtcvad pre-processing to reduce background noise")
         v.addWidget(self.noise_chk)
@@ -305,30 +309,34 @@ class MainWindow(QMainWindow):
         self.punct_chk.setChecked(True)
         self.punct_chk.setToolTip("Whisper adds punctuation automatically — uncheck to get raw words only")
         v.addWidget(self.punct_chk)
+        self.diarize_chk = QCheckBox("Speaker diarization")
+        self.diarize_chk.setToolTip(
+            "Label speakers (S0, S1, …) using pyannote.audio.\n"
+            "Requires: pip install pyannote.audio + HUGGINGFACE_TOKEN env var."
+        )
+        v.addWidget(self.diarize_chk)
         v.addSpacing(14)
-
         v.addWidget(_sep())
-        v.addSpacing(14)
 
         # ── Keywords ───────────────────────────────────────────────────────────
+        v.addSpacing(10)
         kw_lbl = QLabel("KEYWORDS")
         kw_lbl.setObjectName("sectionLabel")
         v.addWidget(kw_lbl)
-        v.addSpacing(4)
+        v.addSpacing(5)
         self.keywords_edit = QLineEdit()
         self.keywords_edit.setPlaceholderText("action item, follow up, deadline...")
         self.keywords_edit.setToolTip("Comma-separated keywords to highlight amber in the transcript")
         v.addWidget(self.keywords_edit)
         v.addSpacing(14)
-
         v.addWidget(_sep())
-        v.addSpacing(14)
 
         # ── Obsidian ───────────────────────────────────────────────────────────
+        v.addSpacing(10)
         obs_lbl = QLabel("OBSIDIAN")
         obs_lbl.setObjectName("sectionLabel")
         v.addWidget(obs_lbl)
-        v.addSpacing(6)
+        v.addSpacing(7)
         self.obs_toggle = QCheckBox("Save to vault")
         self.obs_toggle.stateChanged.connect(self._on_obs_toggle)
         v.addWidget(self.obs_toggle)
@@ -341,8 +349,8 @@ class MainWindow(QMainWindow):
         self.obs_path_edit.setReadOnly(True)
         self.obs_path_edit.setToolTip("Notes saved to <vault>/Meetings/YYYY-MM/")
         vault_row.addWidget(self.obs_path_edit)
-        self.obs_browse_btn = QPushButton("...")
-        self.obs_browse_btn.setFixedWidth(34)
+        self.obs_browse_btn = QPushButton("…")
+        self.obs_browse_btn.setFixedWidth(32)
         self.obs_browse_btn.setToolTip("Select Obsidian vault folder")
         self.obs_browse_btn.clicked.connect(self._browse_vault)
         vault_row.addWidget(self.obs_browse_btn)
@@ -354,33 +362,51 @@ class MainWindow(QMainWindow):
         self.obs_wikilinks_chk.setToolTip("Wrap repeated proper nouns in [[double brackets]]")
         v.addWidget(self.obs_wikilinks_chk)
         v.addSpacing(14)
-
         v.addWidget(_sep())
-        v.addSpacing(12)
 
-        # ── Save / Clear ───────────────────────────────────────────────────────
-        action_row = QHBoxLayout()
-        action_row.setSpacing(6)
+        # ── Save / Clear / Summarize / History ──────────────────────────────────
+        v.addSpacing(12)
+        btn_row1 = QHBoxLayout()
+        btn_row1.setSpacing(6)
         self.save_btn = QPushButton("Save")
+        self.save_btn.setObjectName("actionBtn")
         self.save_btn.setEnabled(False)
         self.save_btn.setToolTip("Save transcript  [Ctrl+S]")
         self.save_btn.clicked.connect(self._save)
-        action_row.addWidget(self.save_btn)
+        btn_row1.addWidget(self.save_btn)
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.setToolTip("Clear transcript")
         self.clear_btn.clicked.connect(self._clear)
-        action_row.addWidget(self.clear_btn)
-        v.addLayout(action_row)
-        v.addSpacing(16)
+        btn_row1.addWidget(self.clear_btn)
+        v.addLayout(btn_row1)
+        v.addSpacing(5)
+
+        btn_row2 = QHBoxLayout()
+        btn_row2.setSpacing(6)
+        self.summary_btn = QPushButton("Summarize")
+        self.summary_btn.setObjectName("actionBtn")
+        self.summary_btn.setEnabled(False)
+        self.summary_btn.setToolTip("Generate AI meeting summary (requires Anthropic API key or local Ollama)")
+        self.summary_btn.clicked.connect(self._on_summarize)
+        btn_row2.addWidget(self.summary_btn)
+        self.history_btn = QPushButton("History")
+        self.history_btn.setToolTip("Browse and re-open past recording sessions")
+        self.history_btn.clicked.connect(self._on_history)
+        btn_row2.addWidget(self.history_btn)
+        v.addLayout(btn_row2)
+        v.addSpacing(14)
 
         # ── Perf stats ─────────────────────────────────────────────────────────
-        self.rtf_label   = QLabel("RTF -")
-        self.lat_label   = QLabel("Latency -")
-        self.lang_label  = QLabel("Lang -")
-        self.chunk_label = QLabel("Chunks -")
+        v.addWidget(_sep())
+        v.addSpacing(8)
+        self.rtf_label   = QLabel("RTF —")
+        self.lat_label   = QLabel("Latency —")
+        self.lang_label  = QLabel("Lang —")
+        self.chunk_label = QLabel("Chunks —")
         for lbl in (self.rtf_label, self.lat_label, self.lang_label, self.chunk_label):
             lbl.setObjectName("stat")
             v.addWidget(lbl)
+            v.addSpacing(1)
 
         v.addStretch()
 
@@ -394,11 +420,11 @@ class MainWindow(QMainWindow):
 
         v = QVBoxLayout(content)
         v.setSpacing(0)
-        v.setContentsMargins(20, 18, 16, 10)
+        v.setContentsMargins(22, 18, 18, 10)
 
         hdr = QHBoxLayout()
         t_lbl = QLabel("Transcript")
-        t_lbl.setObjectName("appTitle")
+        t_lbl.setObjectName("transcriptTitle")
         hdr.addWidget(t_lbl)
         hdr.addStretch()
         self.line_count = QLabel("0 lines")
@@ -535,6 +561,16 @@ class MainWindow(QMainWindow):
 
     def _restore_settings(self) -> None:
         s = self.settings
+        # Block compute signal to avoid rebuilding device multiple times at startup
+        self.compute_combo.blockSignals(True)
+        mode_map = {"auto": "Auto", "gpu": "GPU", "cpu": "CPU"}
+        self.compute_combo.setCurrentText(mode_map.get(s.compute_device, "Auto"))
+        if s.cuda_index < self.cuda_combo.count():
+            self.cuda_combo.setCurrentIndex(s.cuda_index)
+        self.compute_combo.blockSignals(False)
+        # Reflect the device that was already built in __init__
+        self._cuda_row.setVisible(bool(self._cuda_devices) and s.compute_device != "cpu")
+
         if (m := s.model) in MODEL_SIZES:
             self.model_combo.setCurrentText(m)
         if (lm := s.language) in LANGUAGES:
@@ -547,11 +583,6 @@ class MainWindow(QMainWindow):
         self.obs_wikilinks_chk.setChecked(s.obsidian_wikilinks)
         if vault := s.obsidian_vault:
             self.obs_path_edit.setText(str(vault))
-        # Compute
-        mode_map = {"auto": "Auto", "gpu": "GPU", "cpu": "CPU"}
-        self.compute_combo.setCurrentText(mode_map.get(s.compute_device, "Auto"))
-        if s.cuda_index < self.cuda_combo.count():
-            self.cuda_combo.setCurrentIndex(s.cuda_index)
         # Mic
         saved_mic = s.mic_device
         for i, d in enumerate(self._mic_devices):
@@ -560,6 +591,7 @@ class MainWindow(QMainWindow):
                 break
         self.noise_chk.setChecked(s.noise_suppression)
         self.punct_chk.setChecked(s.auto_punctuation)
+        self.diarize_chk.setChecked(s.speaker_diarization)
         self.keywords_edit.setText(", ".join(s.keywords))
         # Trigger visibility update
         self._on_source_changed(self.source_combo.currentText())
@@ -572,8 +604,9 @@ class MainWindow(QMainWindow):
         s.geometry           = bytes(self.saveGeometry())
         s.obsidian_enabled   = self.obs_toggle.isChecked()
         s.obsidian_wikilinks = self.obs_wikilinks_chk.isChecked()
-        s.noise_suppression  = self.noise_chk.isChecked()
-        s.auto_punctuation   = self.punct_chk.isChecked()
+        s.noise_suppression   = self.noise_chk.isChecked()
+        s.auto_punctuation    = self.punct_chk.isChecked()
+        s.speaker_diarization = self.diarize_chk.isChecked()
         kw_raw = self.keywords_edit.text()
         s.keywords = [k.strip() for k in kw_raw.split(",") if k.strip()]
         if (mic := self._selected_mic_name()):
@@ -643,6 +676,7 @@ class MainWindow(QMainWindow):
         self.worker.status_changed.connect(self._on_status)
         self.worker.error.connect(self._on_error)
         self.worker.perf_update.connect(self._on_perf)
+        self.worker.rms_update.connect(self._on_rms)
         self.worker.finished.connect(self._on_worker_finished)
         self.worker.start()
 
@@ -695,7 +729,9 @@ class MainWindow(QMainWindow):
         self.compute_combo.setEnabled(True)
         if self.lines:
             self.save_btn.setEnabled(True)
+            self.summary_btn.setEnabled(True)
             self._auto_save()
+            self._persist_session()
 
     # ── Worker slots ───────────────────────────────────────────────────────────
 
@@ -783,6 +819,17 @@ class MainWindow(QMainWindow):
         self.lat_label.setText(f"{lat_ms:.0f} ms / chunk")
         self.lang_label.setText(f"lang: {lang.lower()}")
 
+    @Slot(float)
+    def _on_rms(self, rms: float) -> None:
+        """Show live audio level in status bar so user can verify audio is flowing."""
+        bar_len = 12
+        filled  = min(bar_len, int(rms / 0.02 * bar_len))
+        bar     = "█" * filled + "░" * (bar_len - filled)
+        level   = f"Audio level: [{bar}]  RMS {rms:.5f}"
+        if rms < 0.00001:
+            level += "  ← near-silence: is audio playing?"
+        self.status_bar.showMessage(level)
+
     # ── Transcript I/O ─────────────────────────────────────────────────────────
 
     def _output_dir(self) -> Path:
@@ -797,6 +844,92 @@ class MainWindow(QMainWindow):
         self._set_status(f"Saved to {path}")
         if self.obs_toggle.isChecked() and self.settings.obsidian_vault:
             self._write_obsidian_async()
+
+    def _persist_session(self) -> None:
+        """Save session JSON for recording history."""
+        try:
+            data = self._session_data()
+            save_session(data)
+        except Exception as exc:
+            log.warning("session persist failed: %s", exc)
+
+    @Slot()
+    def _on_summarize(self) -> None:
+        from PySide6.QtWidgets import QMessageBox
+        if not self._raw_lines:
+            QMessageBox.information(self, "Summarize", "No transcript to summarize.")
+            return
+        self.summary_btn.setEnabled(False)
+        self.summary_btn.setText("⏳ Summarizing…")
+        self._summary_worker = SummaryWorker()
+        self._summary_worker.finished.connect(self._on_summary_done)
+        self._summary_worker.error.connect(self._on_summary_error)
+        self._summary_worker.summarise(self._session_data())
+
+    @Slot(str)
+    def _on_summary_done(self, text: str) -> None:
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextEdit, QVBoxLayout
+        self.summary_btn.setEnabled(True)
+        self.summary_btn.setText("✨ Summarize")
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Meeting Summary")
+        dlg.setMinimumSize(540, 380)
+        lay = QVBoxLayout(dlg)
+        ed  = QTextEdit()
+        ed.setReadOnly(True)
+        ed.setPlainText(text)
+        lay.addWidget(ed)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btns.accepted.connect(dlg.accept)
+        lay.addWidget(btns)
+        dlg.exec()
+
+    @Slot(str)
+    def _on_summary_error(self, msg: str) -> None:
+        from PySide6.QtWidgets import QMessageBox
+        self.summary_btn.setEnabled(True)
+        self.summary_btn.setText("✨ Summarize")
+        QMessageBox.warning(self, "Summary Failed", msg)
+
+    @Slot()
+    def _on_history(self) -> None:
+        from .session_browser import SessionBrowserDialog
+        dlg = SessionBrowserDialog(self)
+        dlg.open_session.connect(self._load_session_data)
+        dlg.exec()
+
+    @Slot(object)
+    def _load_session_data(self, data: object) -> None:
+        """Load a historical session into the transcript area."""
+        self._clear()
+        self._started_at = data.started_at
+        self._ended_at   = data.ended_at
+        self._raw_lines  = list(data.lines)
+        for ts, source, text in data.lines:
+            if source == "info":
+                self.lines.append(f"[{ts}] {text}")
+            elif source == "them":
+                self.lines.append(f"[{ts}] THEM  {text}")
+            else:
+                self.lines.append(f"[{ts}] YOU   {text}")
+            hl_text = self._highlight_keywords(text)
+            if source == "info":
+                html = (f'<p style="margin:1px 0;"><span style="color:#404040; font-size:8pt;">'
+                        f'{hl_text}</span></p>')
+            elif source == "them":
+                html = (f'<p style="margin:2px 0;"><span style="color:#404040; font-family:Consolas,monospace; font-size:8pt;">'
+                        f'[{ts}]</span> <span style="color:#4a9eca;">[THEM]</span> {hl_text}</p>')
+            else:
+                html = (f'<p style="margin:2px 0;"><span style="color:#404040; font-family:Consolas,monospace; font-size:8pt;">'
+                        f'[{ts}]</span> <span style="color:#5aad54;">[YOU]</span> {hl_text}</p>')
+            cur = self.transcript.textCursor()
+            cur.movePosition(QTextCursor.MoveOperation.End)
+            self.transcript.setTextCursor(cur)
+            self.transcript.insertHtml(html)
+        self.save_btn.setEnabled(bool(self.lines))
+        self.summary_btn.setEnabled(bool(self.lines))
+        self.line_count.setText(f"{len(self.lines)} lines")
+        self._set_status(f"Loaded session from {data.started_at.strftime('%Y-%m-%d %H:%M')}")
 
     def _write_obsidian_async(self) -> None:
         vault     = self.settings.obsidian_vault

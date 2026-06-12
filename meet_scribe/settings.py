@@ -89,6 +89,14 @@ class AppSettings:
     def auto_punctuation(self, v: bool) -> None:
         self._q.setValue("auto_punctuation", v)
 
+    @property
+    def speaker_diarization(self) -> bool:
+        return self._q.value("speaker_diarization", False, type=bool)
+
+    @speaker_diarization.setter
+    def speaker_diarization(self, v: bool) -> None:
+        self._q.setValue("speaker_diarization", v)
+
     # ── Output directory ───────────────────────────────────────────────────────
     @property
     def output_dir(self) -> Path:

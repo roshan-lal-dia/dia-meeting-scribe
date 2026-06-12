@@ -82,6 +82,7 @@ class TranscriptionWorker(QThread):
     error          = Signal(str)
     model_loaded   = Signal(bool)
     perf_update    = Signal(float, float, str)
+    rms_update     = Signal(float)   # live audio level for the meter
 
     def __init__(
         self,
@@ -89,16 +90,18 @@ class TranscriptionWorker(QThread):
         device:          DeviceInfo,
         capture_mode:    str,              # "system" | "mic" | "both"
         language:        str | None,       # ISO-639-1 or None for auto-detect
-        loopback_device: str | None = None,  # soundcard device id; None = default
-        mic_name:        str | None = None,   # specific microphone name; None = default
+        loopback_device:    str | None = None,  # soundcard device id; None = default
+        mic_name:           str | None = None,  # specific microphone name; None = default
+        enable_diarization: bool = False,        # use pyannote speaker diarization if available
     ) -> None:
         super().__init__()
-        self.model_name      = model_name
-        self.device          = device
-        self.capture_mode    = capture_mode
-        self.language        = language
-        self.loopback_device = loopback_device
-        self.mic_name        = mic_name
+        self.model_name         = model_name
+        self.device             = device
+        self.capture_mode       = capture_mode
+        self.language           = language
+        self.loopback_device    = loopback_device
+        self.mic_name           = mic_name
+        self.enable_diarization = enable_diarization
         self._q: AudioQueue  = queue.Queue()
         self._running        = False
         self._paused         = False
@@ -168,6 +171,7 @@ class TranscriptionWorker(QThread):
             self._pause_event.wait()
 
             rms = float(np.sqrt(np.mean(audio**2)))
+            self.rms_update.emit(rms)
             if rms < SILENCE_RMS:
                 perf.total_skipped += 1
                 continue
@@ -197,8 +201,25 @@ class TranscriptionWorker(QThread):
 
             if text:
                 ts = datetime.datetime.now().strftime("%H:%M:%S")
-                log.debug("[%s] %s (%s): %s", ts, source, detected, text)
-                self.line_ready.emit(ts, source, text)
+                # Optional speaker diarization
+                speaker_label = ""
+                if self.enable_diarization:
+                    try:
+                        from ..diarize import diarize_segments, is_available
+                        if is_available():
+                            raw_segs = [{"start": 0.0, "end": len(audio) / SAMPLE_RATE, "text": text}]
+                            labelled = diarize_segments(audio, SAMPLE_RATE, raw_segs)
+                            if labelled:
+                                sp = labelled[0].get("speaker", "")
+                                # Shorten SPEAKER_00 → S0, SPEAKER_01 → S1 etc.
+                                if sp.startswith("SPEAKER_"):
+                                    sp = "S" + sp.split("_")[-1].lstrip("0") or "S0"
+                                speaker_label = f"[{sp}] "
+                    except Exception as _diar_exc:
+                        log.debug("diarization skipped: %s", _diar_exc)
+                display_text = speaker_label + text
+                log.debug("[%s] %s (%s): %s", ts, source, detected, display_text)
+                self.line_ready.emit(ts, source, display_text)
 
         for cap in captures:
             cap.running = False
